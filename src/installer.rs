@@ -199,6 +199,7 @@ pub struct DriverInstaller {
     driver_type: DriverType,
     inf_source: InfSource,
     options: InstallOptions,
+    force: bool,
 }
 
 impl DriverInstaller {
@@ -228,6 +229,7 @@ impl DriverInstaller {
             driver_type: DriverType::WinUsb,
             inf_source: InfSource::default(),
             options: InstallOptions::default(),
+            force: false,
         }
     }
     
@@ -368,7 +370,28 @@ impl DriverInstaller {
         self.options.install_opts = opts;
         self
     }
-    
+
+    /// Enable force installation mode.
+    ///
+    /// When enabled, skips the existing driver check and attempts to install
+    /// even if a driver is already present. The underlying libwdi installer
+    /// uses INSTALLFLAG_FORCE to replace existing drivers.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use wdi_rs::DriverInstaller;
+    ///
+    /// let installer = DriverInstaller::for_device(0x1234, 0x5678)
+    ///     .with_force(true)
+    ///     .install();
+    /// ```
+    pub fn with_force(mut self, force: bool) -> Self {
+        debug!("Setting force mode: {}", force);
+        self.force = force;
+        self
+    }
+
     /// Perform the driver installation.
     ///
     /// This will:
@@ -401,11 +424,20 @@ impl DriverInstaller {
     /// ```
     pub fn install(self) -> Result<Device, WdiError> {
         info!("Starting driver installation");
-        debug!("Configuration: selector={:?}, driver_type={:?}, inf_source={:?}", 
-               self.device_selector, self.driver_type, self.inf_source);
-        
+        debug!(
+            "Configuration: selector={:?}, driver_type={:?}, inf_source={:?}, force={}",
+            self.device_selector, self.driver_type, self.inf_source, self.force
+        );
+
         let device = self.find_device()?;
-        self.check_existing_driver(&device)?;
+
+        // Only check existing driver if not in force mode
+        if !self.force {
+            self.check_existing_driver(&device)?;
+        } else {
+            info!("Force mode enabled - skipping existing driver check");
+        }
+
         self.prepare_and_install(device)
     }
     
